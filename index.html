@@ -101,6 +101,7 @@ footer{margin-top:48px;font-size:13px;color:var(--soft)}
       <div class="field">
         <label for="name">Nombre y apellido</label>
         <input id="name" name="name" autocomplete="name" placeholder="Por ejemplo, Juan Pérez" required>
+        <div class="hint">Con o sin tildes. También podés usar tu apodo.</div>
       </div>
       <div class="field">
         <label for="dob">Fecha de nacimiento</label>
@@ -146,6 +147,30 @@ const SALT="dgh26";
 const $=s=>document.querySelector(s);
 const norm=s=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z ]/g," ").replace(/\s+/g," ").trim();
 const slug=s=>norm(s).replace(/ /g,"-");
+// Lenient name matching: the birth date (hashed) identifies the person; the name only has to resemble it.
+// Accepts accents or not, any capitalization, first name or surname only, common nicknames and small typos.
+const NICK={nacho:"ignacio",igna:"ignacio",charo:"rosario",tomi:"tomas",nati:"natali",naty:"natali",lu:"lucia",luli:"lucia",luchi:"lucia",cami:"camila",flor:"florencia",pato:"patricio",pancho:"francisco",paco:"francisco",pepe:"jose",juanchi:"juan",guille:"guillermo",mechi:"mercedes",meche:"mercedes",euge:"eugenia",maqui:"macarena",wen:"wenceslao",wences:"wenceslao",kevo:"kevin",ali:"alejandra",gonza:"gonzalo",german:"german",evi:"evangelina",eva:"evangelina",vane:"vanesa",cin:"cindy",cindi:"cindy",vale:"valentina",agus:"agustina",fede:"federico",facu:"facundo",cande:"candela",cata:"catalina",mica:"micaela",sofi:"sofia",caro:"carolina",dai:"daiana",inaki:"inaki",ceci:"cecilia",vero:"veronica",pau:"paula",teban:"esteban",ignacio:"ignacio"};
+const STOP=new Set(["de","del","la","las","los","y","da","do","dos"]);
+function lev(a,b){const m=a.length,n=b.length;let p=[...Array(n+1).keys()];for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c;}return p[n];}
+function tokOk(t,part){
+  if(t===part)return true;
+  const nk=NICK[t];if(nk&&(nk===part||part.startsWith(nk)||nk.startsWith(part)))return true;
+  if(t.length>=3&&part.length>=3&&(part.startsWith(t)||t.startsWith(part)))return true;
+  const s=Math.min(t.length,part.length);if(s<4)return false;
+  return lev(t,part)<=(s>=7?2:1);
+}
+function findPerson(name,h){
+  const tokens=name.split(" ").filter(t=>t&&!STOP.has(t));
+  let best=null,bestScore=0;
+  for(const p of PEOPLE){
+    if(p.h!==h)continue;
+    const parts=norm(p.n).split(" ").filter(t=>!STOP.has(t));
+    const score=tokens.filter(t=>parts.some(pt=>tokOk(t,pt))).length;
+    if(score>bestScore){best=p;bestScore=score;}
+  }
+  return best;
+}
+
 const imgUrl=(p,i)=>`images/${p.s}-${"ab"[i]}.jpg`;
 const COL={bg:"#0C1634",ink:"#F1F4FC",muted:"#A3BFE8",brand:"#506CCE",brand2:"#6E8EE1"};
 
@@ -173,9 +198,8 @@ $("#form").addEventListener("submit",async e=>{
   if(!name||!dob){err.textContent="Completá tu nombre y tu fecha de nacimiento.";return;}
   const [y,m,d]=dob.split("-");
   let h;try{h=await sha(`${SALT}|${d}-${m}-${y}`);}catch{err.textContent="Tu navegador no pudo verificar los datos. Probá desde otro navegador.";return;}
-  const tokens=name.split(" ");
-  const p=PEOPLE.find(p=>{if(p.h!==h)return false;const pt=norm(p.n).split(" ");return pt[0]===tokens[0]&&tokens.every(t=>pt.includes(t));});
-  if(!p){err.textContent="No encontramos esa combinación. Revisá cómo escribiste tu nombre y tu fecha de nacimiento.";return;}
+  const p=findPerson(name,h);
+  if(!p){err.textContent="No encontramos esa combinación. Revisá tu fecha de nacimiento y probá con tu nombre y apellido.";return;}
   generate(p);
 });
 
